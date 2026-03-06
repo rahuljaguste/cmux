@@ -255,6 +255,7 @@ struct TitlebarControlsView: View {
     @ObservedObject var viewModel: TitlebarControlsViewModel
     let onToggleSidebar: () -> Void
     let onToggleNotifications: () -> Void
+    let onOpenInCursor: () -> Void
     let onNewTab: () -> Void
     let visibilityMode: TitlebarControlsVisibilityMode
     @AppStorage("titlebarControlsStyle") private var styleRawValue = TitlebarControlsStyle.classic.rawValue
@@ -395,6 +396,20 @@ struct TitlebarControlsView: View {
             .background(NotificationsAnchorView { viewModel.notificationsAnchorView = $0 })
             .accessibilityLabel(String(localized: "titlebar.notifications.accessibilityLabel", defaultValue: "Notifications"))
             .safeHelp(KeyboardShortcutSettings.Action.showNotifications.tooltip(String(localized: "titlebar.notifications.tooltip", defaultValue: "Show notifications")))
+
+            if TerminalDirectoryOpenTarget.cursor.isAvailable() {
+                TitlebarControlButton(config: config, action: {
+                    #if DEBUG
+                    dlog("titlebar.openInCursor")
+                    #endif
+                    onOpenInCursor()
+                }) {
+                    iconLabel(systemName: "cursorarrow.rays", config: config)
+                }
+                .accessibilityIdentifier("titlebarControl.openInCursor")
+                .accessibilityLabel("Open in Cursor")
+                .help("Open current directory in Cursor")
+            }
 
             TitlebarControlButton(config: config, action: {
                 #if DEBUG
@@ -558,6 +573,7 @@ struct HiddenTitlebarSidebarControlsView: View {
                     anchorView: viewModel.notificationsAnchorView
                 )
             },
+            onOpenInCursor: { AppDelegate.shared?.openFocusedDirectoryInCursor() },
             onNewTab: { _ = AppDelegate.shared?.tabManager?.addTab() },
             visibilityMode: .onHover
         )
@@ -791,6 +807,7 @@ final class TitlebarControlsAccessoryViewController: NSTitlebarAccessoryViewCont
         self.notificationStore = notificationStore
         let toggleSidebar = { _ = AppDelegate.shared?.sidebarState?.toggle() }
         let toggleNotifications: () -> Void = { _ = AppDelegate.shared?.toggleNotificationsPopover(animated: true) }
+        let openInCursor: () -> Void = { AppDelegate.shared?.openFocusedDirectoryInCursor() }
         let newTab = { _ = AppDelegate.shared?.tabManager?.addTab() }
         hostingView = NonDraggableHostingView(
             rootView: TitlebarControlsView(
@@ -798,6 +815,7 @@ final class TitlebarControlsAccessoryViewController: NSTitlebarAccessoryViewCont
                 viewModel: viewModel,
                 onToggleSidebar: toggleSidebar,
                 onToggleNotifications: toggleNotifications,
+                onOpenInCursor: openInCursor,
                 onNewTab: newTab,
                 visibilityMode: .alwaysVisible
             )

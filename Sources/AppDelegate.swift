@@ -12788,6 +12788,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         }
     }
 
+    func openFocusedDirectoryInCursor() {
+        guard let workspace = tabManager?.selectedWorkspace else { return }
+        let rawDirectory: String = {
+            if let focusedPanelId = workspace.focusedPanelId,
+               let directory = workspace.panelDirectories[focusedPanelId] {
+                return directory
+            }
+            return workspace.currentDirectory
+        }()
+        let trimmed = rawDirectory.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, FileManager.default.fileExists(atPath: trimmed) else { return }
+        let directoryURL = URL(fileURLWithPath: trimmed, isDirectory: true)
+        guard let applicationURL = TerminalDirectoryOpenTarget.cursor.applicationURL() else { return }
+        NSWorkspace.shared.open([directoryURL], withApplicationAt: applicationURL, configuration: NSWorkspace.OpenConfiguration())
+    }
+
+    func resumeClaudeSession(_ session: ClaudeHistorySession) {
+        guard let tabManager else { return }
+        let workspace = tabManager.addWorkspace(workingDirectory: session.project, select: true)
+        let command = "claude --resume \(session.sessionId)\n"
+        sendTextToNewWorkspace(command, workspace: workspace)
+    }
+
+    func sendTextToNewWorkspace(_ text: String, workspace tab: Tab, attempt: Int = 0) {
+        let maxAttempts = 60
+        if let terminalPanel = tab.focusedTerminalPanel, terminalPanel.surface.surface != nil {
+            terminalPanel.sendText(text)
+            return
+        }
+        guard attempt < maxAttempts else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            self?.sendTextToNewWorkspace(text, workspace: tab, attempt: attempt + 1)
+        }
+    }
+
     private func ensureApplicationIcon() {
         let mode = AppIconSettings.resolvedMode()
         AppIconSettings.applyIcon(mode)
