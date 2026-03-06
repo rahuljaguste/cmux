@@ -231,6 +231,7 @@ struct TitlebarControlsView: View {
     @ObservedObject var viewModel: TitlebarControlsViewModel
     let onToggleSidebar: () -> Void
     let onToggleNotifications: () -> Void
+    let onOpenInCursor: () -> Void
     let onNewTab: () -> Void
     @AppStorage("titlebarControlsStyle") private var styleRawValue = TitlebarControlsStyle.classic.rawValue
     @AppStorage(ShortcutHintDebugSettings.titlebarHintXKey) private var titlebarShortcutHintXOffset = ShortcutHintDebugSettings.defaultTitlebarHintX
@@ -349,6 +350,20 @@ struct TitlebarControlsView: View {
             .background(NotificationsAnchorView { viewModel.notificationsAnchorView = $0 })
             .accessibilityLabel("Notifications")
             .help(KeyboardShortcutSettings.Action.showNotifications.tooltip("Show notifications"))
+
+            if TerminalDirectoryOpenTarget.cachedLiveAvailableTargets.contains(.cursor) {
+                TitlebarControlButton(config: config, action: {
+                    #if DEBUG
+                    dlog("titlebar.openInCursor")
+                    #endif
+                    onOpenInCursor()
+                }) {
+                    iconLabel(systemName: "cursorarrow.rays", config: config)
+                }
+                .accessibilityIdentifier("titlebarControl.openInCursor")
+                .accessibilityLabel("Open in Cursor")
+                .help("Open current directory in Cursor")
+            }
 
             TitlebarControlButton(config: config, action: {
                 #if DEBUG
@@ -713,6 +728,7 @@ final class TitlebarControlsAccessoryViewController: NSTitlebarAccessoryViewCont
         self.notificationStore = notificationStore
         let toggleSidebar = { _ = AppDelegate.shared?.sidebarState?.toggle() }
         let toggleNotifications: () -> Void = { _ = AppDelegate.shared?.toggleNotificationsPopover(animated: true) }
+        let openInCursor: () -> Void = { AppDelegate.shared?.openFocusedDirectoryInCursor() }
         let newTab = { _ = AppDelegate.shared?.tabManager?.addTab() }
 
         hostingView = NonDraggableHostingView(
@@ -721,6 +737,7 @@ final class TitlebarControlsAccessoryViewController: NSTitlebarAccessoryViewCont
                 viewModel: viewModel,
                 onToggleSidebar: toggleSidebar,
                 onToggleNotifications: toggleNotifications,
+                onOpenInCursor: openInCursor,
                 onNewTab: newTab
             )
         )

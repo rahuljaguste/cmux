@@ -4356,6 +4356,43 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
             systemSymbolName: "rectangle.righthalf.inset.filled",
             accessibilityDescription: nil
         )
+
+        menu.addItem(.separator())
+
+        let finderItem = menu.addItem(
+            withTitle: "Open in Finder",
+            action: #selector(openCurrentDirectoryInFinder(_:)),
+            keyEquivalent: ""
+        )
+        finderItem.target = self
+        finderItem.image = NSImage(systemSymbolName: "folder", accessibilityDescription: nil)
+
+        if TerminalDirectoryOpenTarget.cachedLiveAvailableTargets.contains(.cursor) {
+            let cursorItem = menu.addItem(
+                withTitle: "Open in Cursor",
+                action: #selector(openCurrentDirectoryInCursor(_:)),
+                keyEquivalent: ""
+            )
+            cursorItem.target = self
+            cursorItem.image = NSImage(systemSymbolName: "cursorarrow.rays", accessibilityDescription: nil)
+        }
+
+        let claudeItem = menu.addItem(
+            withTitle: "Open in Claude",
+            action: #selector(openInClaude(_:)),
+            keyEquivalent: ""
+        )
+        claudeItem.target = self
+        claudeItem.image = NSImage(systemSymbolName: "bubble.left.and.text.bubble.right", accessibilityDescription: nil)
+
+        let openCodeItem = menu.addItem(
+            withTitle: "Open in OpenCode",
+            action: #selector(openInOpenCode(_:)),
+            keyEquivalent: ""
+        )
+        openCodeItem.target = self
+        openCodeItem.image = NSImage(systemSymbolName: "chevron.left.forwardslash.chevron.right", accessibilityDescription: nil)
+
         return menu
     }
 
@@ -4376,6 +4413,47 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
 
     @objc private func splitVertically(_ sender: Any?) {
         _ = splitCurrentSurface(direction: .right)
+    }
+
+    @objc private func openCurrentDirectoryInFinder(_ sender: Any?) {
+        guard let directoryURL = currentSurfaceDirectoryURL() else { return }
+        NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: directoryURL.path)
+    }
+
+    @objc private func openCurrentDirectoryInCursor(_ sender: Any?) {
+        guard let directoryURL = currentSurfaceDirectoryURL(),
+              let applicationURL = TerminalDirectoryOpenTarget.cursor.applicationURL() else { return }
+        NSWorkspace.shared.open([directoryURL], withApplicationAt: applicationURL, configuration: NSWorkspace.OpenConfiguration())
+    }
+
+    @objc private func openInClaude(_ sender: Any?) {
+        openCliToolInNewWorkspace("claude")
+    }
+
+    @objc private func openInOpenCode(_ sender: Any?) {
+        openCliToolInNewWorkspace("opencode")
+    }
+
+    private func openCliToolInNewWorkspace(_ command: String) {
+        guard let directoryURL = currentSurfaceDirectoryURL(),
+              let app = AppDelegate.shared,
+              let tabManager = app.tabManager else { return }
+        let workspace = tabManager.addWorkspace(workingDirectory: directoryURL.path, select: true)
+        app.sendTextToNewWorkspace("\(command)\n", workspace: workspace)
+    }
+
+    private func currentSurfaceDirectoryURL() -> URL? {
+        guard let tabId,
+              let surfaceId = terminalSurface?.id,
+              let app = AppDelegate.shared,
+              let manager = app.tabManagerFor(tabId: tabId) ?? app.tabManager,
+              let workspace = manager.tabs.first(where: { $0.id == tabId }) else {
+            return nil
+        }
+        let rawDirectory = workspace.panelDirectories[surfaceId] ?? workspace.currentDirectory
+        let trimmed = rawDirectory.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, FileManager.default.fileExists(atPath: trimmed) else { return nil }
+        return URL(fileURLWithPath: trimmed, isDirectory: true)
     }
 
     @discardableResult

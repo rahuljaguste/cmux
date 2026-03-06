@@ -456,6 +456,23 @@ struct cmuxApp: App {
                     _ = activeTabManager.reopenMostRecentlyClosedBrowserPanel()
                 }
                 .keyboardShortcut("t", modifiers: [.command, .shift])
+
+                Divider()
+
+                Menu("Claude History") {
+                    let sessions = ClaudeHistoryManager.shared.loadSessions()
+                    if sessions.isEmpty {
+                        Text("No sessions found")
+                    } else {
+                        ForEach(sessions) { session in
+                            Button {
+                                AppDelegate.shared?.resumeClaudeSession(session)
+                            } label: {
+                                Text("\(session.firstMessage)\n\(session.projectName)  \(ClaudeHistoryManager.formatDate(session.lastTimestamp))")
+                            }
+                        }
+                    }
+                }
             }
 
             // Find

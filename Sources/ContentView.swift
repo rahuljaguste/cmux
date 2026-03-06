@@ -1873,6 +1873,7 @@ struct ContentView: View {
                     anchorView: fullscreenControlsViewModel.notificationsAnchorView
                 )
             },
+            onOpenInCursor: { AppDelegate.shared?.openFocusedDirectoryInCursor() },
             onNewTab: { tabManager.addTab() }
         )
     }
