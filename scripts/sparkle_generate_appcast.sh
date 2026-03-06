@@ -63,12 +63,16 @@ mkdir -p "$archives_dir"
 cp "$DMG_PATH" "$archives_dir/$(basename "$DMG_PATH")"
 
 key_file="$work_dir/sparkle_ed_key"
+# Create key file with restrictive permissions before writing secret
+touch "$key_file"
+chmod 600 "$key_file"
 # Ensure base64 padding (keys may be stored without trailing '=')
 padded_key="$SPARKLE_PRIVATE_KEY"
 while (( ${#padded_key} % 4 != 0 )); do
   padded_key="${padded_key}="
 done
 printf "%s" "$padded_key" > "$key_file"
+unset padded_key
 
 generated_appcast_path="$archives_dir/$(basename "$OUT_PATH")"
 

@@ -439,5 +439,6 @@ jobs:
       - name: Cleanup keychain
         if: always()
         run: |
+          security lock-keychain build.keychain >/dev/null 2>&1 || true
           security delete-keychain build.keychain >/dev/null 2>&1 || true
           rm -f /tmp/cert.p12

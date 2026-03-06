@@ -781,6 +781,10 @@ class TerminalController {
 
     private nonisolated static func bindUnixSocket(_ socket: Int32, path: String) -> Int32? {
         guard var addr = unixSocketAddress(path: path) else { return nil }
+        // Set restrictive umask before bind so the socket file is created with
+        // owner-only permissions, closing the race window before applySocketPermissions().
+        let previousUmask = umask(0o177) // creates files as 0o600
+        defer { umask(previousUmask) }
         return withUnsafePointer(to: &addr) { ptr in
             ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPtr in
                 bind(socket, sockaddrPtr, socklen_t(MemoryLayout<sockaddr_un>.size))

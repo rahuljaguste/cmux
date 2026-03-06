@@ -525,10 +525,26 @@ enum NotificationSoundSettings {
         qos: .utility
     )
 
+    /// Maximum allowed length for custom notification commands.
+    private static let maxCommandLength = 4096
+
     static func runCustomCommand(title: String, subtitle: String, body: String, defaults: UserDefaults = .standard) {
         let command = (defaults.string(forKey: customCommandKey) ?? defaultCustomCommand)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !command.isEmpty else { return }
+
+        // Validate command length to prevent abuse via extremely large commands
+        guard command.count <= maxCommandLength else {
+            NSLog("Notification command rejected: exceeds max length (\(command.count) > \(maxCommandLength))")
+            return
+        }
+
+        // Reject null bytes which could cause C-string truncation issues
+        guard !command.contains("\0") else {
+            NSLog("Notification command rejected: contains null bytes")
+            return
+        }
+
         customCommandQueue.async {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/bin/sh")
