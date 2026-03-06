@@ -37,6 +37,11 @@ jobs:
             echo "Could not determine version" >&2
             exit 1
           fi
+          # Validate semver format to prevent injection via crafted branch/input
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+            echo "Invalid version format: $VERSION (expected semver like 1.2.3)" >&2
+            exit 1
+          fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Updating homebrew cask to version $VERSION"
 

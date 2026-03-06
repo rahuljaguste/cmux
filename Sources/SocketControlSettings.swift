@@ -48,6 +48,9 @@ enum SocketControlMode: String, CaseIterable, Identifiable {
     var socketFilePermissions: UInt16 {
         switch self {
         case .allowAll:
+            // Unix domain sockets require write permission to connect(),
+            // so 0o666 is necessary for cross-user access. This mode is
+            // explicitly labeled "Unsafe" and requires user opt-in.
             return 0o666
         case .off, .cmuxOnly, .automation, .password:
             return 0o600

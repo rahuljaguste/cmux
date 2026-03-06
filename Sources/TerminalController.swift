@@ -431,18 +431,34 @@ class TerminalController {
         // Bind to path
         var addr = sockaddr_un()
         addr.sun_family = sa_family_t(AF_UNIX)
+        let maxPathLength = MemoryLayout.size(ofValue: addr.sun_path) - 1 // reserve null terminator
+        guard socketPath.utf8.count <= maxPathLength else {
+            print("TerminalController: Socket path too long (\(socketPath.utf8.count) > \(maxPathLength))")
+            close(serverSocket)
+            reportSocketListenerFailure(
+                message: "socket.listener.start.failed",
+                stage: "path_validation",
+                errnoCode: 0
+            )
+            return
+        }
         socketPath.withCString { ptr in
             withUnsafeMutablePointer(to: &addr.sun_path) { pathPtr in
                 let pathBuf = UnsafeMutableRawPointer(pathPtr).assumingMemoryBound(to: CChar.self)
-                strcpy(pathBuf, ptr)
+                strncpy(pathBuf, ptr, maxPathLength)
+                pathBuf[maxPathLength] = 0 // ensure null termination
             }
         }
 
+        // Set restrictive umask before bind so the socket file is created with
+        // owner-only permissions, closing the race window before applySocketPermissions().
+        let previousUmask = umask(0o177) // creates files as 0o600
         let bindResult = withUnsafePointer(to: &addr) { ptr in
             ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPtr in
                 bind(serverSocket, sockaddrPtr, socklen_t(MemoryLayout<sockaddr_un>.size))
             }
         }
+        umask(previousUmask) // restore original umask
 
         guard bindResult >= 0 else {
             let errnoCode = errno
