@@ -7313,6 +7313,7 @@ final class Workspace: Identifiable, ObservableObject {
     }
 
     private func requestAttentionFlash(panelId: UUID, reason: WorkspaceAttentionFlashReason) {
+        if TerminalNotificationStore.areTerminalEventNotificationsMuted { return }
         let decision = WorkspaceAttentionCoordinator.decideFlash(
             targetPanelID: panelId,
             reason: reason,
@@ -7324,10 +7325,15 @@ final class Workspace: Identifiable, ObservableObject {
 
     private func syncUnreadBadgeStateForPanel(_ panelId: UUID) {
         guard let tabId = surfaceIdFromPanelId(panelId) else { return }
-        let shouldShowUnread = Self.shouldShowUnreadIndicator(
-            hasUnreadNotification: hasUnreadNotification(panelId: panelId),
-            isManuallyUnread: manualUnreadPanelIds.contains(panelId)
-        )
+        let shouldShowUnread: Bool
+        if TerminalNotificationStore.areTerminalEventNotificationsMuted {
+            shouldShowUnread = false
+        } else {
+            shouldShowUnread = Self.shouldShowUnreadIndicator(
+                hasUnreadNotification: hasUnreadNotification(panelId: panelId),
+                isManuallyUnread: manualUnreadPanelIds.contains(panelId)
+            )
+        }
         if let existing = bonsplitController.tab(tabId), existing.showsNotificationBadge == shouldShowUnread {
             return
         }

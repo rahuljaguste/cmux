@@ -2796,6 +2796,7 @@ class GhosttyApp {
     }
 
     private func ringBell() {
+        if TerminalNotificationStore.areTerminalEventNotificationsMuted { return }
         let features = bellFeatures()
 
         if (features & (1 << 0)) != 0 {

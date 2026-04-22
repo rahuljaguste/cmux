@@ -4550,10 +4550,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
-                self?.restartSocketListenerIfEnabled(source: "workspace.didWake")
+                guard let self else { return }
+                // Pause autosave briefly: AppKit + Ghostty can emit a burst of
+                // redraw/layout events on wake, and we don't want to persist
+                // transient frames while the display stack settles.
+                self.sessionAutosaveSuspendedUntil = Date().addingTimeInterval(3.0)
+                self.restartSocketListenerIfEnabled(source: "workspace.didWake")
             }
         }
         lifecycleSnapshotObservers.append(didWakeObserver)
+
+        let willSleepObserver = workspaceCenter.addObserver(
+            forName: NSWorkspace.willSleepNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                // Pause autosave across sleep so we don't race a snapshot
+                // write against the sleep barrier (AppKit suspends display
+                // scheduling, which can leave Ghostty surfaces in a half-
+                // destroyed state that we'd otherwise serialize to disk).
+                self.sessionAutosaveSuspendedUntil = Date().addingTimeInterval(300.0)
+            }
+        }
+        lifecycleSnapshotObservers.append(willSleepObserver)
     }
 
     private func socketListenerConfigurationIfEnabled() -> (mode: SocketControlMode, path: String)? {

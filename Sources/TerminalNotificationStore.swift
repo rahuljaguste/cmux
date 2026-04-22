@@ -699,6 +699,12 @@ final class TerminalNotificationStore: ObservableObject {
 
     static let shared = TerminalNotificationStore()
 
+    /// Master kill switch for terminal-event-driven side effects (system
+    /// notification banners, sounds, custom commands, dock badge, dock bounce,
+    /// tab glow, pane flash, auto-reorder). The pane ring indicator is kept
+    /// on purpose — it's the only non-noisy signal.
+    static let areTerminalEventNotificationsMuted = true
+
     static let categoryIdentifier = "com.cmuxterm.app.userNotification"
     static let actionShowIdentifier = "com.cmuxterm.app.userNotification.show"
     private enum AuthorizationRequestOrigin: String {
@@ -958,7 +964,8 @@ final class TerminalNotificationStore: ObservableObject {
             setFocusedReadIndicator(forTabId: tabId, surfaceId: surfaceId)
         }
 
-        if WorkspaceAutoReorderSettings.isEnabled() {
+        if !Self.areTerminalEventNotificationsMuted,
+           WorkspaceAutoReorderSettings.isEnabled() {
             AppDelegate.shared?.tabManager?.moveTabToTopForNotification(tabId)
         }
 
@@ -980,6 +987,9 @@ final class TerminalNotificationStore: ObservableObject {
         if !idsToClear.isEmpty {
             center.removeDeliveredNotificationsOffMain(withIdentifiers: idsToClear)
             center.removePendingNotificationRequestsOffMain(withIdentifiers: idsToClear)
+        }
+        if Self.areTerminalEventNotificationsMuted {
+            return
         }
         if shouldSuppressExternalDelivery {
             suppressedNotificationFeedbackHandler(self, notification)
@@ -1429,6 +1439,10 @@ final class TerminalNotificationStore: ObservableObject {
 #endif
 
     private func refreshDockBadge() {
+        if Self.areTerminalEventNotificationsMuted {
+            NSApp?.dockTile.badgeLabel = TaggedRunBadgeSettings.normalizedTag()
+            return
+        }
         let label = Self.dockBadgeLabel(
             unreadCount: unreadCount,
             isEnabled: NotificationBadgeSettings.isDockBadgeEnabled(),
