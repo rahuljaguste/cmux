@@ -11245,7 +11245,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         }
 
         if matchConfiguredShortcut(event: event, action: .quit) {
-            return handleQuitShortcutWarning()
+            // Delegate to the standard NSApp.terminate path so the menu and
+            // Cmd+Q use the same async confirmation dialog. The previous
+            // custom handler used alert.runModal() from inside a key-event
+            // dispatch, which left the terminate re-entry in a bad state and
+            // silently no-op'd the Quit button.
+            NSApp.terminate(nil)
+            return true
         }
         if matchConfiguredShortcut(event: event, action: .openSettings) {
             openPreferencesWindow(debugSource: "shortcut.openSettings")
