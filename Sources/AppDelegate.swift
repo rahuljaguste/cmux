@@ -2332,6 +2332,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         let sidebarState: SidebarState
         let sidebarSelectionState: SidebarSelectionState
         weak var window: NSWindow?
+        // Last frame/display captured while displays were stable; used to
+        // restore window geometry after screen-parameter changes (display
+        // on/off, sleep/wake) so AppKit's fallback shrink doesn't persist.
+        var lastKnownGoodFrame: SessionRectSnapshot?
+        var lastKnownGoodDisplay: SessionDisplaySnapshot?
 
         init(
             windowId: UUID,
@@ -2550,6 +2555,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     private var sessionAutosaveTimer: DispatchSourceTimer?
     private var sessionAutosaveTickInFlight = false
     private var sessionAutosaveDeferredRetryPending = false
+    // After a screen-parameter change, AppKit may transiently shrink windows
+    // onto a fallback display. Pause autosave briefly so the bad frame isn't
+    // persisted while we're restoring the last-known-good geometry.
+    private var sessionAutosaveSuspendedUntil: Date?
     private let sessionPersistenceQueue = DispatchQueue(
         label: "com.cmuxterm.app.sessionPersistence",
         qos: .utility
@@ -2681,6 +2690,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             self,
             selector: #selector(handleReactGrabDidCopySelection(_:)),
             name: .reactGrabDidCopySelection,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleDidChangeScreenParameters(_:)),
+            name: NSApplication.didChangeScreenParametersNotification,
             object: nil
         )
 
@@ -4096,6 +4111,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         }
     }
 
+    @objc private func handleDidChangeScreenParameters(_ notification: Notification) {
+        // Displays went on/off or resolution changed. AppKit can leave cmux
+        // windows collapsed onto a fallback display with a shrunken frame.
+        // Pause autosave, then re-apply each context's last-known-good frame
+        // through the same remap helper that startup uses (runs on the next
+        // runloop tick so AppKit finishes its own repositioning first).
+        sessionAutosaveSuspendedUntil = Date().addingTimeInterval(2.0)
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            let displays = self.currentDisplayGeometries()
+            for context in self.mainWindowContexts.values {
+                guard let window = context.window ?? self.windowForMainWindowId(context.windowId) else { continue }
+                guard let restoredFrame = Self.resolvedWindowFrame(
+                    from: context.lastKnownGoodFrame,
+                    display: context.lastKnownGoodDisplay,
+                    availableDisplays: displays.available,
+                    fallbackDisplay: displays.fallback
+                ) else { continue }
+                if !window.frame.equalTo(restoredFrame) {
+                    window.setFrame(restoredFrame, display: true)
+                }
+            }
+        }
+    }
+
     private func resolvedWindowFrame(from snapshot: SessionWindowSnapshot?) -> NSRect? {
         let displays = currentDisplayGeometries()
         return Self.resolvedWindowFrame(
@@ -4686,6 +4726,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     private func runSessionAutosaveTick(source: String) {
         guard Self.shouldRunSessionAutosaveTick(isTerminatingApp: isTerminatingApp) else { return }
         guard !sessionAutosaveTickInFlight else { return }
+        if let suspendedUntil = sessionAutosaveSuspendedUntil, Date() < suspendedUntil { return }
         if let remainingQuietPeriod = remainingSessionAutosaveTypingQuietPeriod() {
 #if DEBUG
             dlog(
@@ -4864,9 +4905,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             .prefix(SessionPersistencePolicy.maxWindowsPerSnapshot)
             .map { context in
                 let window = context.window ?? windowForMainWindowId(context.windowId)
+                let frameSnap = window.map { SessionRectSnapshot($0.frame) }
+                let dispSnap = displaySnapshot(for: window)
+                if let frameSnap { context.lastKnownGoodFrame = frameSnap }
+                if let dispSnap { context.lastKnownGoodDisplay = dispSnap }
                 return SessionWindowSnapshot(
-                    frame: window.map { SessionRectSnapshot($0.frame) },
-                    display: displaySnapshot(for: window),
+                    frame: frameSnap,
+                    display: dispSnap,
                     tabManager: context.tabManager.sessionSnapshot(includeScrollback: includeScrollback),
                     sidebar: SessionSidebarSnapshot(
                         isVisible: context.sidebarState.isVisible,
@@ -4957,13 +5002,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             existing.window = window
             reindexMainWindowContextIfNeeded(existing, for: window)
         } else {
-            mainWindowContexts[key] = MainWindowContext(
+            let newContext = MainWindowContext(
                 windowId: windowId,
                 tabManager: tabManager,
                 sidebarState: sidebarState,
                 sidebarSelectionState: sidebarSelectionState,
                 window: window
             )
+            newContext.lastKnownGoodFrame = SessionRectSnapshot(window.frame)
+            newContext.lastKnownGoodDisplay = displaySnapshot(for: window)
+            mainWindowContexts[key] = newContext
             NotificationCenter.default.addObserver(
                 forName: NSWindow.willCloseNotification,
                 object: window,
